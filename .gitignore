@@ -2,3 +2,4 @@
 .env
 *.pl
 PA_REDISTRICTING_DATA.csv
+.Rproj.user

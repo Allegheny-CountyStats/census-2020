@@ -55,8 +55,11 @@ final_munis <- comps_muni %>%
 
 map <- bounds %>%
   left_join(final_munis, by = c("GEOID20" = "FIPS")) %>%
-  mutate(Non_White = `2020_Total_Population`- `2020_White_Alone_Population`,
-         Non_White_Perc = (Non_White / `2020_Total_Population`) * 100)
+  mutate(`2020_Non_White` = `2020_Total_Population`- `2020_White_Alone_Population`,
+         `2010_Non_White` = `2010_Total_Population`- `2010_White_Alone_Population`,
+         Percent_Change_2020_Non_White = ((`2020_Non_White` - `2010_Non_White`) / `2010_Non_White`) * 100,
+         Percent_Change_2020_Non_White = na_if(Percent_Change_2020_Non_White, Inf)
+         )
 ```
 
 ## Total Population Change
@@ -80,37 +83,43 @@ leaflet(map, width = "100%") %>%
             labFormat = labelFormat(suffix = "%"),
             position = "bottomright")
 ```
-## Non-White Population Share
+## Non-White Population Change
 
 ```{r div}
-divPal <- colorNumeric("BuPu", map$Non_White_Perc) 
+divPal <- colorBin("BuPu",
+                   bins = c(-20, 0, 40, 80, 160, 420, 840, 1300), 
+                   domain = map$Percent_Change_2020_Non_White,
+                   ) 
 
 leaflet(map, width = "100%") %>%
   addTiles() %>%
-  addPolygons(color = ~divPal(Non_White_Perc),
+  addPolygons(color = ~divPal(Percent_Change_2020_Non_White),
               opacity = .75,
               fillOpacity = .65,
               popup = ~paste("<b>Municipality:</b>", NAME,
                              "<br><b>2020 Total Pop:</b>", prettyNum(`2020_Total_Population`, big.mark = ","),
-                             "<ul><li>Native American, Alaskan Natives, Pacific Islander:</b>", prettyNum(`2020_Native_Hawaiian_and_Other_Pacific_Islander_alone_Populatio`, big.mark = ","),
-                             "<li>Hispanic or Latino Pop:</b>", prettyNum(`2020_Hispanic_or_Latino_Population`, big.mark = ","),
-                             "<li>Black:</b>", prettyNum(`2020_Black_Alone_Population`, big.mark = ","),
-                             "<li>Asian:</b>", prettyNum(`2020_Asian_Alone_Population`, big.mark = ","),
-                             "<li>White:</b>", prettyNum(`2020_White_Alone_Population`, big.mark = ","),
-                             "<li>Two or more Races:</b>", prettyNum(`2020_Population_two_or_more_races`, big.mark = ","),
-                             "<li>Any other race Population:</b>", prettyNum(`2020_Any_other_single_race_alone_Popualtion`, big.mark = ","),
-                             "<li>Native Hawaiian and Other Pacific Islander:</b>", prettyNum(`2020_Native_Hawaiian_and_Other_Pacific_Islander_alone_Populatio`, big.mark = ","), 
+                             "<br><b>2020 Non-White Growth:</b>",round(`Percent_Change_2020_Non_White`, 2), "%",
+                             "<br><b>2010 Non-White Pop:</b>", prettyNum(`2010_Non_White`, big.mark = ","),
+                             "<br><b>2020 Non-White Pop:</b>", prettyNum(`2020_Non_White`, big.mark = ","),
+                             "<ul><li>Any other single race:", prettyNum(`2020_Any_other_single_race_alone_Popualtion`, big.mark = ","),
+                             "<li>Asian:", prettyNum(`2020_Asian_Alone_Population`, big.mark = ","),
+                             "<li>Black:", prettyNum(`2020_Black_Alone_Population`, big.mark = ","),
+                             "<li>Hispanic or Latino Pop:", prettyNum(`2020_Hispanic_or_Latino_Population`, big.mark = ","),
+                             "<li>Native American, Alaskan Natives, Pacific Islander:", prettyNum(`2020_Native_Hawaiian_and_Other_Pacific_Islander_alone_Populatio`, big.mark = ","),
+                             "<li>Native Hawaiian and Other Pacific Islander:", prettyNum(`2020_Native_Hawaiian_and_Other_Pacific_Islander_alone_Populatio`, big.mark = ","), 
+                             "<li>Two or more Races:", prettyNum(`2020_Population_two_or_more_races`, big.mark = ","),
+                             "<li>White:", prettyNum(`2020_White_Alone_Population`, big.mark = ","),
                              "</ul")
   ) %>%
   addLegend(pal = divPal,
-            values = ~Non_White_Perc, 
+            values = ~Percent_Change_2020_Non_White, 
             opacity = 0.7, 
             title = 'Non-White Population',
             labFormat = labelFormat(suffix = "%"),
             position = "bottomright")
 ```
 
-## Highest Racial Growth by Muni
+## Racial Group with Highest Growth Rate, by Muni
 
 ```{r race, echo=FALSE}
 racialChng <- colorFactor("Set2", domain = map$MOST_GROWTH_RACE)
@@ -122,14 +131,14 @@ leaflet(map, width = "100%") %>%
               fillOpacity = .65,
               popup = ~paste("<b>Municipality:</b>", NAME,
                              "<ul>",
-                             "<li>Native American, Alaskan Natives, Pacific Islander:", Percent_Change_2010_to_2020_American_Indian_and_Alaska_Native_a, "%",
-                          "<li>Hispanic or Latino", Percent_Change_2010_to_2020_Hispanic_or_Latino_Population, "%",
+                          "<li>Any other single race:", Percent_Change_2010_to_2020_Any_other_single_race_alone_Popualt, "%",
                           "<li>Asian", Percent_Change_2010_to_2020_Asian_Alone_Population, "%",
                           "<li>Black", Percent_Change_2010_to_2020_Black_Alone_Population, "%",
-                          "<li>White:", Percent_Change_2010_to_2020_White_Alone_Population, "%",
-                          "<li>Two or More Races:", Percent_Change_2010_to_2020_Population_two_or_more_races, "%",
-                          "<li>Any other single race:", Percent_Change_2010_to_2020_Any_other_single_race_alone_Popualt, "%",
+                          "<li>Hispanic or Latino", Percent_Change_2010_to_2020_Hispanic_or_Latino_Population, "%",
+                             "<li>Native American, Alaskan Natives, Pacific Islander:", Percent_Change_2010_to_2020_American_Indian_and_Alaska_Native_a, "%",
                           "<li>Native Hawaiian and Other Pacific Islander:", Percent_Change_2010_to_2020_Native_Hawaiian_and_Other_Pacific_I, "%",
+                          "<li>Two or More Races:", Percent_Change_2010_to_2020_Population_two_or_more_races, "%",
+                          "<li>White:", Percent_Change_2010_to_2020_White_Alone_Population, "%",
                           "</ul>
                              <b>Percentage Total Change:</b>", Percent_Change_2010_to_2020_Total_Population, "%",
                              "<br><b>Total Pop:</b>", prettyNum(`2020_Total_Population`, big.mark = ","))) %>%
