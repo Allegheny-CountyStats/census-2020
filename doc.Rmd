@@ -1,0 +1,141 @@
+---
+title: "Census 2020 by Municipality"
+subtitle: ""
+author: "Geoffrey Arnold"
+date: "  \nRan on: `r format(Sys.time(), '%a %B %d, %Y %I:%M %p', tz ='America/New_York')`"
+output:
+  html_document:
+    toc: true
+    theme: flatly
+    toc_depth: 2
+---
+
+```{r setup, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.height = 9) # Switch this to FALSE to hide code to those who will be consuming your report
+require(sf)
+require(readr)
+require(dplyr)
+require(leaflet)
+require(jsonlite)
+require(tidyr)
+
+bounds <- st_read("./tl_2020_42003_cousub20.shp")
+
+comps_muni <- fromJSON("https://data.wprdc.org/datastore/odata3.0/fb2cb765-458c-4deb-8252-0a18d7ce9a78?$format=json")$value %>%
+  select(FIPS, NAME, everything()) %>%
+  mutate(across(contains("Percent_Change"), ~gsub("%", "", .)),
+         NAME = as.factor(NAME)) %>%
+  mutate_if(is.character, as.numeric)
+
+race_delta <- comps_muni %>%
+  select(FIPS, starts_with("Percent_Change")) %>%
+  pivot_longer(-c(FIPS)) %>%
+  filter(name != "Percent_Change_2010_to_2020_Total_Population", !is.na(value))
+
+race_grps <- race_delta %>%
+  group_by(FIPS) %>%
+  summarise(value = max(value)) %>%
+  left_join(race_delta) %>%
+  distinct(FIPS, .keep_all = TRUE) %>%
+  mutate(name = case_when(name == "Percent_Change_2010_to_2020_American_Indian_and_Alaska_Native_a" ~ "Native American, Alaskan Natives, Pacific Islander",
+                          name == "Percent_Change_2010_to_2020_Hispanic_or_Latino_Population" ~ "Hispanic or Latino",
+                          name == "Percent_Change_2010_to_2020_Asian_Alone_Population" ~ "Asian",
+                          name == "Percent_Change_2010_to_2020_Black_Alone_Population" ~ "Black",
+                          name == "Percent_Change_2010_to_2020_White_Alone_Population" ~ "White",
+                          name == "Percent_Change_2010_to_2020_Population_two_or_more_races" ~ "Two or More Races",
+                          name == "Percent_Change_2010_to_2020_Any_other_single_race_alone_Popualt" ~ "Any other single race",
+                          name == "Percent_Change_2010_to_2020_Native_Hawaiian_and_Other_Pacific_I" ~ "Native Hawaiian and Other Pacific Islander")
+         ) %>%
+  rename(MOST_GROWTH_RACE = name,
+         MOST_GROWTH_PERCENT = value)
+
+final_munis <- comps_muni %>%
+  left_join(race_grps) %>%
+  mutate(FIPS = as.character(FIPS))
+
+map <- bounds %>%
+  left_join(final_munis, by = c("GEOID20" = "FIPS")) %>%
+  mutate(Non_White = `2020_Total_Population`- `2020_White_Alone_Population`,
+         Non_White_Perc = (Non_White / `2020_Total_Population`) * 100)
+```
+
+## Total Population Change
+
+```{r pop}
+popChng <- colorNumeric("YlGnBu", domain = map$Percent_Change_2010_to_2020_Total_Population)
+
+leaflet(map, width = "100%") %>%
+  addTiles() %>%
+  addPolygons(color = ~popChng(Percent_Change_2010_to_2020_Total_Population),
+              opacity = .75,
+              fillOpacity = .65,
+              popup = ~paste("<b>Municipality:</b>", NAME,
+                             "<br><b>Percentage Change:</b>", Percent_Change_2010_to_2020_Total_Population, "%",
+                             "<br><b>2020 Total Pop:</b>", prettyNum(`2020_Total_Population`, big.mark = ","),
+                             "<br><b>2010 Total Pop:</b>", prettyNum(`2010_Total_Population`, big.mark = ","))) %>%
+  addLegend(pal = popChng,
+            values = ~Percent_Change_2010_to_2020_Total_Population, 
+            opacity = 0.7, 
+            title = 'Population <br>Change',
+            labFormat = labelFormat(suffix = "%"),
+            position = "bottomright")
+```
+## Non-White Population Share
+
+```{r div}
+divPal <- colorNumeric("BuPu", map$Non_White_Perc) 
+
+leaflet(map, width = "100%") %>%
+  addTiles() %>%
+  addPolygons(color = ~divPal(Non_White_Perc),
+              opacity = .75,
+              fillOpacity = .65,
+              popup = ~paste("<b>Municipality:</b>", NAME,
+                             "<br><b>2020 Total Pop:</b>", prettyNum(`2020_Total_Population`, big.mark = ","),
+                             "<ul><li>Native American, Alaskan Natives, Pacific Islander:</b>", prettyNum(`2020_Native_Hawaiian_and_Other_Pacific_Islander_alone_Populatio`, big.mark = ","),
+                             "<li>Hispanic or Latino Pop:</b>", prettyNum(`2020_Hispanic_or_Latino_Population`, big.mark = ","),
+                             "<li>Black:</b>", prettyNum(`2020_Black_Alone_Population`, big.mark = ","),
+                             "<li>Asian:</b>", prettyNum(`2020_Asian_Alone_Population`, big.mark = ","),
+                             "<li>White:</b>", prettyNum(`2020_White_Alone_Population`, big.mark = ","),
+                             "<li>Two or more Races:</b>", prettyNum(`2020_Population_two_or_more_races`, big.mark = ","),
+                             "<li>Any other race Population:</b>", prettyNum(`2020_Any_other_single_race_alone_Popualtion`, big.mark = ","),
+                             "<li>Native Hawaiian and Other Pacific Islander:</b>", prettyNum(`2020_Native_Hawaiian_and_Other_Pacific_Islander_alone_Populatio`, big.mark = ","), 
+                             "</ul")
+  ) %>%
+  addLegend(pal = divPal,
+            values = ~Non_White_Perc, 
+            opacity = 0.7, 
+            title = 'Non-White Population',
+            labFormat = labelFormat(suffix = "%"),
+            position = "bottomright")
+```
+
+## Highest Racial Growth by Muni
+
+```{r race, echo=FALSE}
+racialChng <- colorFactor("Set2", domain = map$MOST_GROWTH_RACE)
+
+leaflet(map, width = "100%") %>%
+  addTiles() %>%
+  addPolygons(color = ~racialChng(MOST_GROWTH_RACE),
+              opacity = .75,
+              fillOpacity = .65,
+              popup = ~paste("<b>Municipality:</b>", NAME,
+                             "<ul>",
+                             "<li>Native American, Alaskan Natives, Pacific Islander:", Percent_Change_2010_to_2020_American_Indian_and_Alaska_Native_a, "%",
+                          "<li>Hispanic or Latino", Percent_Change_2010_to_2020_Hispanic_or_Latino_Population, "%",
+                          "<li>Asian", Percent_Change_2010_to_2020_Asian_Alone_Population, "%",
+                          "<li>Black", Percent_Change_2010_to_2020_Black_Alone_Population, "%",
+                          "<li>White:", Percent_Change_2010_to_2020_White_Alone_Population, "%",
+                          "<li>Two or More Races:", Percent_Change_2010_to_2020_Population_two_or_more_races, "%",
+                          "<li>Any other single race:", Percent_Change_2010_to_2020_Any_other_single_race_alone_Popualt, "%",
+                          "<li>Native Hawaiian and Other Pacific Islander:", Percent_Change_2010_to_2020_Native_Hawaiian_and_Other_Pacific_I, "%",
+                          "</ul>
+                             <b>Percentage Total Change:</b>", Percent_Change_2010_to_2020_Total_Population, "%",
+                             "<br><b>Total Pop:</b>", prettyNum(`2020_Total_Population`, big.mark = ","))) %>%
+  addLegend(pal = racialChng ,
+            values = ~MOST_GROWTH_RACE, 
+            opacity = 0.7, 
+            title = 'Largest Growth by Racial Group',
+            position = "bottomright")
+```
