@@ -3,3 +3,4 @@
 *.pl
 PA_REDISTRICTING_DATA.csv
 .Rproj.user
+tl_2020_us_county/*
